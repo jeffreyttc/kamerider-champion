@@ -67,16 +67,16 @@ class SoccerStrategyTuning:
 
     # Speed limits
     # Hard output clamps in the motion layer, tied to chassis stability and field friction.
-    max_linear_speed: float = 0.8  #  Linear speed limit in m/s.
-    max_angular_speed: float = 1.0  #  Angular speed limit in rad/s.
+    max_linear_speed: float = 1.2  #  Linear speed limit in m/s.
+    max_angular_speed: float = 1.8  #  Angular speed limit in rad/s.
 
     # Kick hysteresis
     # Use enter/exit thresholds plus delay to prevent flapping around distance boundaries.
-    soccer_kick_enter_distance: float = 2.5  #  Enter kick mode when distance to ball is below enter.
-    soccer_kick_exit_distance: float = 3.0  #  Exit kick mode when distance to ball is above exit; must exceed enter.
+    soccer_kick_enter_distance: float = 2.8  # Slightly larger to engage kick mode sooner.
+    soccer_kick_exit_distance: float = 3.2  # Must exceed enter; kept reasonable.
     soccer_kick_power: float = 1.5  #  Kick power.
-    soccer_kick_min_active_sec: float = 1.0  #  Minimum active kick duration to avoid instant switching.
-    soccer_kick_exit_delay_sec: float = 1.5  #  Delay after exit condition before actually leaving kick mode.
+    soccer_kick_min_active_sec: float = 0.6  # Reduced to allow quicker kick transitions.
+    soccer_kick_exit_delay_sec: float = 0.8  # Reduced exit delay for faster response.
 
     # Set plays and restarts
     restart_touch_distance: float = 0.45  #  Distance threshold for "touched the ball".
@@ -107,10 +107,10 @@ class SoccerStrategyTuning:
     # movement comes from gait synthesis, so this layer changes only vyaw and never vy.
     # Teammates always count as neighbors; opponents are included by BT phase through move_to.
     # PLAY excludes opponents so chasers are not pushed away; READY/recovery includes them.
-    yaw_avoid_horizon_sec: float = 1.0  #  Prediction horizon for nearby-neighbor trajectories.
-    yaw_avoid_min_distance_m: float = 0.78  #  Apply bias only when current or predicted distance is below this value.
+    yaw_avoid_horizon_sec: float = 0.7  # Shorter horizon for more responsive avoidance.
+    yaw_avoid_min_distance_m: float = 0.85  # Slightly relaxed to reduce unnecessary avoidance.
     yaw_avoid_bias_max: float = (
-        0.6  #  Maximum vyaw bias per neighbor in rad/s, reduced by scale.
+        0.8  # Increased max vyaw bias per neighbor for faster turning around others.
     )
 
     # Ball-claim arbitration
@@ -125,13 +125,13 @@ class SoccerStrategyTuning:
     pass_lane_clearance: float = 0.75  #  Required clearance around the pass lane to avoid interception.
 
     # Dribbling
-    dribble_advance_m: float = 1.15  #  Forward distance advanced by one dribble target.
+    dribble_advance_m: float = 1.4  # Increased for faster dribble progression.
     dribble_center_pull: float = 0.65  #  Pull toward centerline while dribbling to avoid hugging the sideline.
 
     # Support positioning
-    support_depth_m: float = 1.05  #  Supporter depth behind the ball carrier.
-    support_lateral_m: float = 1.25  #  Lateral spacing for supporters.
-    support_min_spacing_m: float = 1.15  #  Minimum teammate spacing to avoid clustering.
+    support_depth_m: float = 0.9  # Closer support for faster passing options.
+    support_lateral_m: float = 1.15  # Tighter lateral spacing for compact formation.
+    support_min_spacing_m: float = 1.0  # Reduced minimum spacing for tighter formations.
 
     # Goalkeeping and challenges
     goalkeeper_challenge_margin_m: float = 0.70  #  Margin that triggers goalkeeper challenge.

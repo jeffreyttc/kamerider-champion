@@ -40,13 +40,14 @@ from .geometry import TeamFieldFrame
 #
 # 2026-06-26 adjustment: lower floor, relax arrival angle, and add dead zone to fix
 # extra spinning in Ready; see note/motion_spinning_issue_analysis.md.
-_ARRIVE_DISTANCE = 0.15
-_ARRIVE_ANGLE = 0.20  # Relaxed to ~11.5 deg to avoid repeated micro-adjustments near target.
-_TURN_THRESHOLD = 0.5
-_ANGULAR_SPEED_FLOOR = 0.25  # Lower floor to reduce overshoot for small angle errors.
-_ANGULAR_DEAD_ZONE = 0.15  # No floor below this angle error; pure proportional control.
-_LINEAR_SPEED_FLOOR = 0.3
-_LINEAR_GAIN = 0.9
+# 2026-07-14 speed boost: higher gains, larger floors, tighter arrival for faster response.
+_ARRIVE_DISTANCE = 0.12
+_ARRIVE_ANGLE = 0.25  # Slightly relaxed to allow faster arrival with higher speeds.
+_TURN_THRESHOLD = 0.6  # Allow forward motion at slightly larger angles for smoother transitions.
+_ANGULAR_SPEED_FLOOR = 0.4  # Higher floor for faster turning response.
+_ANGULAR_DEAD_ZONE = 0.10  # Smaller dead zone for quicker reaction to small errors.
+_LINEAR_SPEED_FLOOR = 0.5  # Higher minimum forward speed for faster approach.
+_LINEAR_GAIN = 1.2  # More aggressive linear speed scaling.
 
 
 class MotionController:
@@ -350,15 +351,16 @@ class MotionController:
         return clamp(raw, -self._config.strategy.max_linear_speed, self._config.strategy.max_linear_speed)
 
     def _angular_velocity(self, angle_error: float) -> float:
-        """omega equals clamp(2 * err, +/-max), then applies a floor.
+        """omega equals clamp(3 * err, +/-max), then applies a floor.
 
         Small-angle dead zone: when error is below ``_ANGULAR_DEAD_ZONE``, skip the
         floor and use pure proportional control to avoid floor-amplified overshoot near target angle.
+        Increased gain from 2.0 to 3.0 for faster angular response.
         """
         if abs(angle_error) <= 1e-6:
             return 0.0
         omega = clamp(
-            2.0 * angle_error,
+            3.0 * angle_error,
             -self._config.strategy.max_angular_speed,
             self._config.strategy.max_angular_speed,
         )
