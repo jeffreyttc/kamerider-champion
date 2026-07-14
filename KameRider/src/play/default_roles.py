@@ -113,7 +113,11 @@ class ChaserRole(RoleStrategy):
 
 
 class SupporterRole(RoleStrategy):
-    """Attacking support role; uses :meth:`Targeting.support_target` for positioning."""
+    """Attacking support role; uses :meth:`Targeting.support_target` for positioning.
+
+    When the ball is in our dangerous area (defensive mode active), falls back
+    to goal-line guard positioning since normal support would be ineffective.
+    """
 
     name = "supporter"
 
@@ -123,11 +127,16 @@ class SupporterRole(RoleStrategy):
         player_id: int,
         context: PlayContext,
     ) -> Pose2D:
-        return kit.targeting.support_target(
+        result = kit.targeting.support_target(
             player_id,
             context,
             kit.is_player_allowed,
         )
+        # When ball is in dangerous area, normal support positioning returns None.
+        # Fall back to goal-line guard to maintain defensive shape.
+        if result is None:
+            return kit.ready_stance.goalkeeper_guard_target(context.known_ball)
+        return result
 
     def build_subtree(
         self,
@@ -144,18 +153,23 @@ class SupporterRole(RoleStrategy):
 
 
 # ----------------------------------------------------------------------
-# Defender: extension defensive position, defaulting to supporter target
+# Defender: shot-blocking support for goalkeeper in dangerous zone
 # ----------------------------------------------------------------------
 
 
 class DefenderRole(RoleStrategy):
-    """Extension defensive role; default implementation reuses the supporter target."""
+    """Defensive blocking role that positions between ball and goal.
+
+    When the ball is in our dangerous goal area, the defender positions
+    itself between the ball and the goal to block shots and cover angles.
+    When the ball is NOT in the dangerous area, falls back to normal
+    supporter positioning for attacking support.
+    """
 
     name = "defender"
 
-    def __init__(self) -> None:
-        super().__init__()
-        self._fallback = SupporterRole()
+    # Approach alignment distance for defender challenges, slightly tighter than chaser.
+    _APPROACH_OFFSET = 0.30
 
     def target(
         self,
@@ -163,19 +177,129 @@ class DefenderRole(RoleStrategy):
         player_id: int,
         context: PlayContext,
     ) -> Pose2D:
-        return self._fallback.target(kit, player_id, context)
+        ball = context.known_ball
+        dangerous = kit.targeting.ball_in_own_defensive_area(ball)
+
+        if dangerous:
+            # Use defensive blocking positioning
+            defense_target = kit.targeting.goalkeeper_support_target(
+                player_id, context, kit.is_player_allowed
+            )
+            if defense_target is not None:
+                return defense_target
+            # Fallback to normal support if defensive target unavailable
+            return kit.ready_stance.goalkeeper_guard_target(ball)
+
+        # Ball is safe - fall back to normal supporter positioning
+        return self._fallback_target(kit, player_id, context)
+
+    def _fallback_target(
+        self,
+        kit: "SoccerKit",
+        player_id: int,
+        context: PlayContext,
+    ) -> Pose2D:
+        """Normal supporter positioning when ball is not in dangerous area."""
+        ball = context.known_ball
+        kt = self._fallback_kick_target(kit, player_id, context)
+        kick_theta = math.atan2(kt.y - ball.y, kt.x - ball.x)
+        return kit.motion.approach_target(
+            ball,
+            kick_theta,
+            _CHASER_APPROACH_OFFSET,
+        )
+
+    def _fallback_kick_target(
+        self,
+        kit: "SoccerKit",
+        player_id: int,
+        context: PlayContext,
+    ) -> Pose2D:
+        """Select kick target when falling back to supporter behavior."""
+        slot = kit.config.ready_slot_for_player(player_id)
+        if slot == ReadySlot.SIDE:
+            return kit.targeting.select_clear_or_pass_target(
+                player_id,
+                context,
+                kit.is_player_allowed,
+            )
+        return kit.targeting.select_kick_target(
+            player_id,
+            context,
+            kit.is_player_allowed,
+        )
+
+    def wants_to_kick(
+        self,
+        kit: "SoccerKit",
+        player_id: int,
+        context: PlayContext,
+    ) -> bool:
+        """Only want to kick when ball is dangerous AND we're close enough to challenge."""
+        ball = context.known_ball
+        if not kit.targeting.ball_in_own_defensive_area(ball):
+            return False
+        # Check if we're close enough to challenge
+        robot = context.teammates.get(player_id)
+        if robot is None or robot.pose is None:
+            return False
+        distance = math.hypot(ball.x - robot.pose.x, ball.y - robot.pose.y)
+        return distance < 1.5
+
+    def kick_target(
+        self,
+        kit: "SoccerKit",
+        player_id: int,
+        context: PlayContext,
+    ) -> Pose2D:
+        """When defending, clear the ball away from our goal."""
+        ball = context.known_ball
+        if kit.targeting.ball_near_sideline(ball):
+            return kit.targeting.sideline_recovery_target(ball)
+        return Pose2D(
+            kit.field.opponent_goal_x(),
+            0.0,
+            kit.field.attack_theta(),
+        )
+
+    def _defend_reason(self, kit: "SoccerKit", player_id: int) -> str:
+        return "defender block"
+
+    def _fallback_reason(self, kit: "SoccerKit", player_id: int) -> str:
+        return "defender support"
+
+    def _kick_reason(
+        self,
+        kit: "SoccerKit",
+        player_id: int,
+        target: Pose2D,
+    ) -> str:
+        return kit.targeting.kick_reason(target, default="defender clear")
 
     def build_subtree(
         self,
         kit: "SoccerKit",
         player_id: int,
     ) -> py_trees.behaviour.Behaviour:
-        return MoveToTarget(
+        # Store fallback reference for closure capture
+        self._fallback = SupporterRole()
+        return build_attack_subtree(
             kit,
             player_id,
-            lambda context: self.target(kit, player_id, context),
-            reason_fn=lambda: "defender hold",
-            hold_vyaw=0.12,
+            AttackSubtreeConfig(
+                target_fn=lambda context: self.target(kit, player_id, context),
+                kick_target_fn=lambda context: self.kick_target(
+                    kit, player_id, context
+                ),
+                wants_kick_fn=lambda context: self.wants_to_kick(
+                    kit, player_id, context
+                ),
+                reason_fn=lambda: self._defend_reason(kit, player_id),
+                kick_reason_fn=lambda target: self._kick_reason(
+                    kit, player_id, target
+                ),
+                hold_vyaw=0.12,
+            ),
         )
 
 

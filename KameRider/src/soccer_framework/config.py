@@ -136,6 +136,12 @@ class SoccerStrategyTuning:
     # Goalkeeping and challenges
     goalkeeper_challenge_margin_m: float = 0.70  #  Margin that triggers goalkeeper challenge.
 
+    # Goalkeeper support / defensive positioning
+    defender_block_distance_m: float = 1.5  #  Distance from goal center to block shots when ball is dangerous.
+    defender_min_x_m: float = -2.0  #  Minimum x (closest to goal) the defender can position.
+    defender_max_x_m: float = -5.0  #  Maximum x (furthest from goal) the defender positions.
+    defender_clamp_y_margin_m: float = 0.5  #  Extra margin when clamping defender y to field bounds.
+
     # Sideline and goal-line recovery
     sideline_recovery_margin_m: float = 0.90  #  Sideline distance threshold for recovery.
     sideline_recovery_infield_m: float = 1.60  #  Infield pull depth during recovery.

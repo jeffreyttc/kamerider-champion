@@ -14,6 +14,7 @@ non-PLAY branches. To change tactics, override ``assign_roles``, customize
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
 # Default role labels kept as constants for ``assign_roles``; they no longer restrict the string set.
 ROLE_CHASER = "chaser"
 ROLE_SUPPORTER = "supporter"
+ROLE_DEFENDER = "defender"
 ROLE_GOALKEEPER = "goalkeeper"
 ROLE_NONE = "none"
 
@@ -144,20 +146,28 @@ class DefaultPlaybook(Playbook):
     def __init__(self, kit: SoccerKit):
         super().__init__(kit)
         # Explicitly register default PLAY dynamic roles; competitor subclasses can
-        # call register_role(...) after super().__init__(kit). DefenderRole is reserved for explicit custom Playbook registration.
+        # call register_role(...) after super().__init__(kit).
         from .default_roles import (
             ChaserRole,
+            DefenderRole,
             GoalkeeperRole,
             SupporterRole,
         )
 
         self.register_role(ChaserRole())
         self.register_role(SupporterRole())
+        self.register_role(DefenderRole())
         self.register_role(GoalkeeperRole())
 
     def assign_roles(self, context: PlayContext) -> RoleAssignment:
         chaser_id = self.select_chaser(context)
         goalkeeper_id = self._configured_goalkeeper()
+        ball = context.known_ball
+
+        # When ball is in our dangerous defensive area, assign a defender
+        # to support the goalkeeper with shot-blocking positioning.
+        ball_dangerous = self.kit.targeting.ball_in_own_defensive_area(ball)
+        defender_id = self.select_defender(context, chaser_id, goalkeeper_id, ball_dangerous)
 
         mapping: dict[int, str] = {}
         for player_id in self.kit.config.player_ids:
@@ -165,10 +175,48 @@ class DefaultPlaybook(Playbook):
                 mapping[player_id] = ROLE_GOALKEEPER
             elif player_id == chaser_id:
                 mapping[player_id] = ROLE_CHASER
+            elif player_id == defender_id:
+                mapping[player_id] = ROLE_DEFENDER
             else:
                 mapping[player_id] = ROLE_SUPPORTER
 
         return RoleAssignment(mapping)
+
+    def select_defender(
+        self,
+        context: PlayContext,
+        exclude_chaser: int,
+        exclude_goalkeeper: int | None,
+        ball_dangerous: bool,
+    ) -> int | None:
+        """Select the robot that will act as defender when ball is in dangerous area.
+
+        Returns the player ID of the best non-goalkeeper, non-chaser candidate
+        for defensive positioning. Returns None when the ball is not dangerous
+        or no suitable candidate exists.
+        """
+        if not ball_dangerous:
+            return None
+
+        config = self.kit.config
+        candidate_ids = [
+            pid for pid in config.player_ids
+            if pid != exclude_goalkeeper
+            and pid != exclude_chaser
+        ]
+        if not candidate_ids:
+            return None
+
+        # Prefer the closest eligible player to the ball for faster repositioning.
+        ball = context.known_ball
+        best_id = min(
+            candidate_ids,
+            key=lambda pid: (
+                math.hypot(ball.x - (context.teammates[pid].pose.x if context.teammates[pid].pose else 0),
+                           ball.y - (context.teammates[pid].pose.y if context.teammates[pid].pose else 0))
+            ),
+        )
+        return best_id
 
     # Internals
 

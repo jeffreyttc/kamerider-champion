@@ -191,8 +191,30 @@ class Targeting:
         player_id: int,
         context: PlayContext,
         is_player_allowed: PlayerAllowed,
-    ) -> Pose2D:
-        return support.support_target(
+    ) -> Pose2D | None:
+        """Compute supporter target. Returns None when defensive positioning is active."""
+        result = support.support_target(
+            self.config, self.field, player_id, context,
+            is_player_allowed,
+        )
+        # When ball is in dangerous area, normal support positioning is not useful.
+        # Return None to signal that goalkeeper_support_target should be used instead.
+        if self.ball_in_own_defensive_area(context.known_ball):
+            return None
+        return result
+
+    def goalkeeper_support_target(
+        self,
+        player_id: int,
+        context: PlayContext,
+        is_player_allowed: PlayerAllowed,
+    ) -> Pose2D | None:
+        """Compute defensive blocking target when ball is in our dangerous area.
+
+        Returns None when the ball is NOT in our dangerous area (defender should
+        fall back to normal support positioning).
+        """
+        return support.goalkeeper_support_target(
             self.config, self.field, player_id, context,
             is_player_allowed,
         )
