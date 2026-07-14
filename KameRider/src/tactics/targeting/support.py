@@ -31,7 +31,9 @@ def support_target(
 ) -> Pose2D:
     """Compute this tick's supporter target Pose2D.
 
-    Stay behind the ball by ``support_depth_m`` and laterally split by player_id parity, clamped to our half.
+    Stay behind the ball by ``support_depth_m`` and laterally split by player_id parity.
+    When the ball is in the opponent's half, the supporter may follow into attack.
+    Otherwise the position is clamped to our half to maintain defensive shape.
     Pushout: use :func:`_spaced_support_target` to avoid overlapping other supporters.
     """
 
@@ -39,7 +41,11 @@ def support_target(
     lateral = config.strategy.support_lateral_m * side
     ball = context.known_ball
     x = ball.x - config.strategy.support_depth_m
-    x = field.own_half_x(x, margin=0.35)
+    # Only clamp to our half when the ball is not deep in the opponent's territory.
+    # This allows the supporter to join the attack when the ball is on the opponent side.
+    half_margin = config.field_length / 2.0
+    if ball.x < half_margin * 0.15:
+        x = field.own_half_x(x, margin=0.35)
     y = clamp(
         ball.y + lateral,
         -config.field_width / 2.0 + 0.45,
